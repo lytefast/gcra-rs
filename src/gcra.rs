@@ -1,11 +1,13 @@
-use chrono::{DateTime, Duration, Utc};
+use std::time::Instant;
+
+use crate::rate_limit::RateLimit;
 
 /// Holds the minmum amount of state necessary to implement a GRCA leaky buckets.
 /// Refer to: https://blog.ian.stapletoncordas.co/2018/12/understanding-generic-cell-rate-limiting.html
-#[derive(Default, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct GcraState {
     /// GCRA's Theoretical Arrival Time timestamp
-    pub tat: Option<DateTime<Utc>>,
+    pub tat: Option<Instant>,
 }
 
 impl GcraState {
@@ -14,12 +16,8 @@ impl GcraState {
     /// - https://blog.ian.stapletoncordas.co/2018/12/understanding-generic-cell-rate-limiting.html
     ///
     /// If denied, will return an [Result::Err] where the value is the next allowed timestamp.
-    pub fn check_and_modify(
-        &mut self,
-        rate_limit: &RateLimit,
-        cost: u64,
-    ) -> Result<(), DateTime<Utc>> {
-        let arrived_at = Utc::now();
+    pub fn check_and_modify(&mut self, rate_limit: &RateLimit, cost: u32) -> Result<(), Instant> {
+        let arrived_at = Instant::now();
         self.check_and_modify_internal(rate_limit, arrived_at, cost)
     }
 
@@ -27,9 +25,9 @@ impl GcraState {
     fn check_and_modify_internal(
         &mut self,
         rate_limit: &RateLimit,
-        arrived_at: DateTime<Utc>,
-        cost: u64,
-    ) -> Result<(), DateTime<Utc>> {
+        arrived_at: Instant,
+        cost: u32,
+    ) -> Result<(), Instant> {
         let increment_interval = rate_limit.increment_interval(cost);
 
         let tat = match self.tat {
@@ -49,7 +47,7 @@ impl GcraState {
             Ok(())
         } else {
             // prev request was recent and there's a possibility that we've reached the limit
-            let delay_variation_tolerance = Duration::milliseconds(rate_limit.period_ms as _);
+            let delay_variation_tolerance = rate_limit.period;
             let new_tat = tat + increment_interval;
 
             let next_allowed_at = new_tat - delay_variation_tolerance;
@@ -66,17 +64,16 @@ impl GcraState {
 
 #[cfg(test)]
 mod tests {
+    use std::time::Duration;
+
     use super::*;
 
     #[test]
     fn gcra_basics() {
         let mut gcra = GcraState::default();
-        let rate_limit = RateLimit {
-            max_burst: 1,
-            period_ms: 1000,
-        };
+        let rate_limit = RateLimit::new(1, Duration::from_secs(1));
 
-        let first_req_ts = Utc::now();
+        let first_req_ts = Instant::now();
         assert_eq!(
             Ok(()),
             gcra.check_and_modify(&rate_limit, 1),
@@ -92,7 +89,7 @@ mod tests {
             .check_and_modify(&rate_limit, 1)
             .expect_err("request #2 should fail");
         assert!(
-            next_allowed_ts >= first_req_ts + Duration::seconds(1),
+            next_allowed_ts >= first_req_ts + Duration::from_secs(1),
             "we should only be allowed after the burst period"
         );
         assert_eq!(after_first_tat, gcra.tat, "State should be unchanged.")
@@ -100,30 +97,27 @@ mod tests {
 
     #[test]
     fn gcra_leaky() {
-        const INCREMENT_INTERVAL: u64 = 500;
+        // const INCREMENT_INTERVAL: u64 = 500;
+        const INCREMENT_INTERVAL: Duration = Duration::from_millis(500);
 
         let mut gcra = GcraState::default();
-        let rate_limit = RateLimit {
-            max_burst: 3,
-            period_ms: 3 * INCREMENT_INTERVAL,
-        };
+        let rate_limit = RateLimit::new(10, 10 * INCREMENT_INTERVAL);
 
-        let arrived_at = Utc::now();
+        let arrived_at = Instant::now();
         assert_eq!(
             Ok(()),
             gcra.check_and_modify_internal(&rate_limit, arrived_at, 1),
             "request #1 should pass"
         );
-        let single_use_tat = gcra.tat.expect("should have a tat state after use");
         assert_eq!(
-            single_use_tat,
-            arrived_at + Duration::milliseconds(INCREMENT_INTERVAL as _),
-            "new TAT state should have adjusted for leaky bucket"
+            gcra.tat,
+            Some(arrived_at + INCREMENT_INTERVAL),
+            "new TAT state should have been moved forward according to cost"
         );
 
         assert_eq!(
             Ok(()),
-            gcra.check_and_modify(&rate_limit, 2),
+            gcra.check_and_modify(&rate_limit, 9),
             "request #2 should consume all remaining resources and pass"
         );
         assert!(
@@ -132,16 +126,14 @@ mod tests {
         );
 
         let current_tat = gcra.tat.expect("should have a tat state after use");
-        assert!(current_tat > Utc::now(), "tat in the future");
+        assert!(current_tat > Instant::now(), "tat in the future");
 
         assert!(
             matches!(
                 // manually force time check that we know will fail
                 gcra.check_and_modify_internal(
                     &rate_limit,
-                    current_tat
-                        - Duration::milliseconds(rate_limit.period_ms as _)
-                        - Duration::milliseconds(1),
+                    current_tat - rate_limit.period - Duration::from_millis(1),
                     1
                 ),
                 Err(_allowed_at)
@@ -151,11 +143,7 @@ mod tests {
 
         assert!(
             matches!(
-                gcra.check_and_modify_internal(
-                    &rate_limit,
-                    current_tat - Duration::milliseconds(rate_limit.period_ms as _),
-                    1
-                ),
+                gcra.check_and_modify_internal(&rate_limit, current_tat - rate_limit.period, 1),
                 Err(_allowed_at)
             ),
             "request #5 after leak period should pass. INCREMENT_INTERVAL has passed"
@@ -165,12 +153,9 @@ mod tests {
     #[test]
     fn gcra_block_expensive_cost_denied() {
         let mut gcra = GcraState::default();
-        let rate_limit = RateLimit {
-            max_burst: 5,
-            period_ms: 1000,
-        };
+        let rate_limit = RateLimit::new(5, Duration::from_secs(1));
 
-        let first_req_ts = Utc::now();
+        let first_req_ts = Instant::now();
         assert_eq!(
             Ok(()),
             gcra.check_and_modify(&rate_limit, 1),
@@ -187,7 +172,7 @@ mod tests {
             .check_and_modify(&rate_limit, 10)
             .expect_err("request #2 should fail because we couldn't afford the cost");
         assert!(
-            next_allowed_ts >= first_req_ts + Duration::seconds(1),
+            next_allowed_ts >= first_req_ts + Duration::from_secs(1),
             "we should only be allowed after the burst period"
         );
         assert_eq!(after_first_tat, gcra.tat, "State should be unchanged.")
@@ -195,14 +180,11 @@ mod tests {
 
     #[test]
     fn gcra_refreshed_after_period() {
-        let past_time = Utc::now() - Duration::milliseconds(1001);
+        let past_time = Instant::now() - Duration::from_millis(1001);
         let mut gcra = GcraState {
             tat: Some(past_time),
         };
-        let rate_limit = RateLimit {
-            max_burst: 1,
-            period_ms: 1000,
-        };
+        let rate_limit = RateLimit::new(1, Duration::from_secs(1));
         assert_eq!(
             Ok(()),
             gcra.check_and_modify(&rate_limit, 1),
