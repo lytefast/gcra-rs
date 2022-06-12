@@ -1,3 +1,6 @@
+use std::time::Instant;
+
+use chrono::{DateTime, Duration, Utc};
 use gcra::{GcraState, RateLimit};
 
 fn check_rate_limit(rate_limit: &RateLimit, gcra_state: &mut GcraState) -> bool {
@@ -8,10 +11,15 @@ fn check_rate_limit(rate_limit: &RateLimit, gcra_state: &mut GcraState) -> bool 
             true
         }
         Err(next_allowed_at) => {
-            println!("denied. Try again at {:?}", next_allowed_at);
+            println!("denied. Try again at {:?}", to_date_time(next_allowed_at));
             false
         }
     }
+}
+
+fn to_date_time(instant: Instant) -> DateTime<Utc> {
+    let diff = instant - Instant::now();
+    Utc::now() + Duration::from_std(diff).unwrap()
 }
 
 fn main() {
