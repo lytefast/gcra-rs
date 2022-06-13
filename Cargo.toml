@@ -11,6 +11,7 @@ description = "A basic implementation of GCRA algorithm"
 keywords = ["rate-limit"]
 
 [dependencies]
+thiserror = "1.0.31"
 
 [dev-dependencies]
 chrono = "0.4.19"

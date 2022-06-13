@@ -1,6 +1,15 @@
 use std::time::Instant;
+use thiserror::Error;
 
 use crate::rate_limit::RateLimit;
+
+#[derive(Error, Debug, PartialEq, Eq)]
+pub enum GcraError {
+    #[error("Cost of the increment ({cost}) exceeds the rate limit ({rate_limit:?}) and will never succeed)")]
+    DeniedIndefinitely { cost: u32, rate_limit: RateLimit },
+    #[error("Denied until {next_allowed_at:?}")]
+    DeniedUntil {next_allowed_at: Instant},
+}
 
 /// Holds the minmum amount of state necessary to implement a GRCA leaky buckets.
 /// Refer to: [understanding GCRA](https://blog.ian.stapletoncordas.co/2018/12/understanding-generic-cell-rate-limiting.html)
@@ -17,7 +26,7 @@ impl GcraState {
     ///
     /// # Returns
     /// If denied, will return an [Result::Err] where the value is the next allowed timestamp.
-    pub fn check_and_modify(&mut self, rate_limit: &RateLimit, cost: u32) -> Result<(), Instant> {
+    pub fn check_and_modify(&mut self, rate_limit: &RateLimit, cost: u32) -> Result<(), GcraError> {
         let arrived_at = Instant::now();
         self.check_and_modify_internal(rate_limit, arrived_at, cost)
     }
@@ -28,15 +37,26 @@ impl GcraState {
         rate_limit: &RateLimit,
         arrived_at: Instant,
         cost: u32,
-    ) -> Result<(), Instant> {
+    ) -> Result<(), GcraError> {
         let increment_interval = rate_limit.increment_interval(cost);
+
+        let compute_tat = |new_tat: Instant| {
+            if increment_interval > rate_limit.period {
+                return Err(GcraError::DeniedIndefinitely {
+                    cost,
+                    rate_limit: rate_limit.clone(),
+                });
+            }
+
+            Ok(new_tat+increment_interval)
+        };
 
         let tat = match self.tat {
             Some(tat) => tat,
             None => {
                 // First ever request. Allow passage and update self.
-                self.tat = Some(arrived_at + increment_interval);
-                return Ok(());
+                self.tat = Some(compute_tat(arrived_at)?);
+                return Ok(())
             }
         };
 
@@ -44,12 +64,12 @@ impl GcraState {
         if tat < arrived_at {
             // prev request was really old
             let new_tat = std::cmp::max(tat, arrived_at);
-            self.tat = Some(new_tat + increment_interval);
+            self.tat = Some(compute_tat(new_tat)?);
             Ok(())
         } else {
             // prev request was recent and there's a possibility that we've reached the limit
             let delay_variation_tolerance = rate_limit.period;
-            let new_tat = tat + increment_interval;
+            let new_tat = compute_tat(tat)?;
 
             let next_allowed_at = new_tat - delay_variation_tolerance;
             if next_allowed_at < arrived_at {
@@ -57,7 +77,7 @@ impl GcraState {
                 Ok(())
             } else {
                 // Denied, must wait until next_allowed_at
-                Err(next_allowed_at)
+                Err(GcraError::DeniedUntil{next_allowed_at})
             }
         }
     }
@@ -86,9 +106,11 @@ mod tests {
             "state should be modified and have a TAT in the future"
         );
 
-        let next_allowed_ts = gcra
-            .check_and_modify(&rate_limit, 1)
-            .expect_err("request #2 should fail");
+        let next_allowed_ts = match gcra
+            .check_and_modify(&rate_limit, 1) {
+                Err(GcraError::DeniedUntil { next_allowed_at }) => next_allowed_at,
+                _ => panic!("request #2 should be denied temporarily")
+            };
         assert!(
             next_allowed_ts >= first_req_ts + Duration::from_secs(1),
             "we should only be allowed after the burst period"
@@ -151,8 +173,31 @@ mod tests {
         );
     }
 
+
     #[test]
-    fn gcra_block_expensive_cost_denied() {
+    fn gcra_cost_indefinitely_denied() {
+        let mut gcra = GcraState::default();
+        let rate_limit = RateLimit::new(5, Duration::from_secs(1));
+
+        assert_eq!(
+            Ok(()),
+            gcra.check_and_modify(&rate_limit, 1),
+            "request #1 should pass"
+        );
+
+        let over_limit_cost = rate_limit.resource_limit + 1;
+        match gcra
+            .check_and_modify(&rate_limit, over_limit_cost) {
+                Err(GcraError::DeniedIndefinitely { cost , rate_limit: rl }) => {
+                    assert_eq!(over_limit_cost, cost);
+                    assert_eq!(rate_limit, rl);
+                },
+                e => panic!("request #2 would never succeed {:?}", e)
+            };
+        }
+
+    #[test]
+    fn gcra_cost_temporarily_denied() {
         let mut gcra = GcraState::default();
         let rate_limit = RateLimit::new(5, Duration::from_secs(1));
 
@@ -169,12 +214,16 @@ mod tests {
             "state should be modified and have a TAT in the future"
         );
 
-        let next_allowed_ts = gcra
-            .check_and_modify(&rate_limit, 10)
-            .expect_err("request #2 should fail because we couldn't afford the cost");
+        let next_allowed_ts = match gcra.check_and_modify(&rate_limit, rate_limit.resource_limit) {
+                Err(GcraError::DeniedUntil { next_allowed_at }) => {
+                    next_allowed_at
+                },
+                _ => panic!("request #2 is only temporarily denied")
+            };
+
         assert!(
-            next_allowed_ts >= first_req_ts + Duration::from_secs(1),
-            "we should only be allowed after the burst period"
+            next_allowed_ts >= first_req_ts + rate_limit.increment_interval(1),
+            "we should only be allowed after the burst period {:?} >= {:?}", next_allowed_ts, first_req_ts + rate_limit.period
         );
         assert_eq!(after_first_tat, gcra.tat, "State should be unchanged.")
     }
