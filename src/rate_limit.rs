@@ -1,7 +1,10 @@
 use std::time::Duration;
 
+/// Defines the configuration for a GCRA rate limit.
 pub struct RateLimit {
+    // Amount of resources that are allowed in a given period.
     pub resource_limit: u32,
+    // The length of which to allow access to the resource.
     pub period: Duration,
 
     /// Incremental duration cost of a single resource check
@@ -23,6 +26,7 @@ impl RateLimit {
         Self::new(resource_limit, Duration::from_secs(1))
     }
 
+    /// Given a `cost`, calculates the increment interval.
     pub fn increment_interval(&self, cost: u32) -> Duration {
         self.emission_interval * cost
     }

@@ -3,20 +3,19 @@ use std::time::Instant;
 use crate::rate_limit::RateLimit;
 
 /// Holds the minmum amount of state necessary to implement a GRCA leaky buckets.
-/// Refer to: https://blog.ian.stapletoncordas.co/2018/12/understanding-generic-cell-rate-limiting.html
+/// Refer to: [understanding GCRA](https://blog.ian.stapletoncordas.co/2018/12/understanding-generic-cell-rate-limiting.html)
 #[derive(Default, Debug, Clone, PartialEq, Eq, Hash, Copy)]
 pub struct GcraState {
-    /// GCRA's Theoretical Arrival Time timestamp
+    /// GCRA's Theoretical Arrival Time (**TAT**)
     /// An unset value signals a new state
     pub tat: Option<Instant>,
 }
 
 impl GcraState {
     /// Check if we are allowed to proceed. If so updated our internal state and return true.
-    /// Explaination of GCRA can be found here:
-    /// - https://blog.ian.stapletoncordas.co/2018/12/understanding-generic-cell-rate-limiting.html
+    /// Explaination of GCRA can be found [here](https://blog.ian.stapletoncordas.co/2018/12/understanding-generic-cell-rate-limiting.html)
     ///
-    /// ## Return
+    /// # Returns
     /// If denied, will return an [Result::Err] where the value is the next allowed timestamp.
     pub fn check_and_modify(&mut self, rate_limit: &RateLimit, cost: u32) -> Result<(), Instant> {
         let arrived_at = Instant::now();
