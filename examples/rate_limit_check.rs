@@ -1,7 +1,7 @@
 use std::time::Instant;
 
 use chrono::{DateTime, Duration, Utc};
-use gcra::{GcraState, RateLimit};
+use gcra::{GcraState, GcraError, RateLimit};
 
 fn check_rate_limit(rate_limit: &RateLimit, gcra_state: &mut GcraState) -> bool {
     const COST: u32 = 1;
@@ -10,8 +10,13 @@ fn check_rate_limit(rate_limit: &RateLimit, gcra_state: &mut GcraState) -> bool 
             println!("allowed");
             true
         }
-        Err(next_allowed_at) => {
+        Err(GcraError::DeniedUntil {next_allowed_at }) => {
             println!("denied. Try again at {:?}", to_date_time(next_allowed_at));
+            false
+        }
+        
+        Err(error) => {
+            println!("denied: {:?}", error);
             false
         }
     }

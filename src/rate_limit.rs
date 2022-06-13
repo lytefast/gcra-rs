@@ -1,5 +1,6 @@
 use std::time::Duration;
 
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord)]
 /// Defines the configuration for a GCRA rate limit.
 pub struct RateLimit {
     // Amount of resources that are allowed in a given period.
