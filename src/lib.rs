@@ -19,9 +19,17 @@
 //!   );
 //! }
 //! ```
+//!
+//! # Features
+//! - `rate-limiter` a LRU + expiring rate limiter. Implements `Send + Sync` so
+//!   can be used asynchronously.
 
 mod gcra;
 mod rate_limit;
+#[cfg(feature = "rate-limiter")]
+mod rate_limiter;
 
-pub use crate::gcra::{GcraState, GcraError};
+pub use crate::gcra::{GcraError, GcraState};
 pub use crate::rate_limit::RateLimit;
+#[cfg(feature = "rate-limiter")]
+pub use crate::rate_limiter::{RateLimiter, RateLimiterError};

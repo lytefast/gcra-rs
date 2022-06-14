@@ -10,8 +10,18 @@ homepage = "https://github.com/lytefast/gcra-rs"
 description = "A basic implementation of GCRA algorithm"
 keywords = ["rate-limit"]
 
+[features]
+default = []
+rate-limiter = ["thingvellir", "tokio"]
+
 [dependencies]
+thingvellir = { version = "0.0.6-alpha1", optional = true }
 thiserror = "1.0.31"
+tokio = { version = "1.19.2", features = ["time"], optional = true }
 
 [dev-dependencies]
 chrono = "0.4.19"
+
+[[example]]
+name = "rate_limiter"
+required-features = ["rate-limiter"]

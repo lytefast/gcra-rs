@@ -5,8 +5,10 @@ use crate::rate_limit::RateLimit;
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum GcraError {
+    /// Cost of the increment exceeds the rate limit and  will never succeed
     #[error("Cost of the increment ({cost}) exceeds the rate limit ({rate_limit:?}) and will never succeed)")]
     DeniedIndefinitely { cost: u32, rate_limit: RateLimit },
+    /// Limited request until after the [Instant]
     #[error("Denied until {next_allowed_at:?}")]
     DeniedUntil { next_allowed_at: Instant },
 }

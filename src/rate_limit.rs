@@ -32,3 +32,13 @@ impl RateLimit {
         self.emission_interval * cost
     }
 }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn rate_limit_emission_interal() {
+        let rate_limit = RateLimit::new(10, Duration::from_secs(20));
+        assert_eq!(Duration::from_secs(2), rate_limit.emission_interval)
+    }
+}
