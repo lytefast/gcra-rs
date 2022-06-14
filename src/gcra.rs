@@ -8,7 +8,7 @@ pub enum GcraError {
     #[error("Cost of the increment ({cost}) exceeds the rate limit ({rate_limit:?}) and will never succeed)")]
     DeniedIndefinitely { cost: u32, rate_limit: RateLimit },
     #[error("Denied until {next_allowed_at:?}")]
-    DeniedUntil {next_allowed_at: Instant},
+    DeniedUntil { next_allowed_at: Instant },
 }
 
 /// Holds the minmum amount of state necessary to implement a GRCA leaky buckets.
@@ -48,7 +48,7 @@ impl GcraState {
                 });
             }
 
-            Ok(new_tat+increment_interval)
+            Ok(new_tat + increment_interval)
         };
 
         let tat = match self.tat {
@@ -56,7 +56,7 @@ impl GcraState {
             None => {
                 // First ever request. Allow passage and update self.
                 self.tat = Some(compute_tat(arrived_at)?);
-                return Ok(())
+                return Ok(());
             }
         };
 
@@ -77,7 +77,7 @@ impl GcraState {
                 Ok(())
             } else {
                 // Denied, must wait until next_allowed_at
-                Err(GcraError::DeniedUntil{next_allowed_at})
+                Err(GcraError::DeniedUntil { next_allowed_at })
             }
         }
     }
@@ -106,11 +106,10 @@ mod tests {
             "state should be modified and have a TAT in the future"
         );
 
-        let next_allowed_ts = match gcra
-            .check_and_modify(&rate_limit, 1) {
-                Err(GcraError::DeniedUntil { next_allowed_at }) => next_allowed_at,
-                _ => panic!("request #2 should be denied temporarily")
-            };
+        let next_allowed_ts = match gcra.check_and_modify(&rate_limit, 1) {
+            Err(GcraError::DeniedUntil { next_allowed_at }) => next_allowed_at,
+            _ => panic!("request #2 should be denied temporarily"),
+        };
         assert!(
             next_allowed_ts >= first_req_ts + Duration::from_secs(1),
             "we should only be allowed after the burst period"
@@ -173,7 +172,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn gcra_cost_indefinitely_denied() {
         let mut gcra = GcraState::default();
@@ -186,15 +184,17 @@ mod tests {
         );
 
         let over_limit_cost = rate_limit.resource_limit + 1;
-        match gcra
-            .check_and_modify(&rate_limit, over_limit_cost) {
-                Err(GcraError::DeniedIndefinitely { cost , rate_limit: rl }) => {
-                    assert_eq!(over_limit_cost, cost);
-                    assert_eq!(rate_limit, rl);
-                },
-                e => panic!("request #2 would never succeed {:?}", e)
-            };
-        }
+        match gcra.check_and_modify(&rate_limit, over_limit_cost) {
+            Err(GcraError::DeniedIndefinitely {
+                cost,
+                rate_limit: rl,
+            }) => {
+                assert_eq!(over_limit_cost, cost);
+                assert_eq!(rate_limit, rl);
+            }
+            e => panic!("request #2 would never succeed {:?}", e),
+        };
+    }
 
     #[test]
     fn gcra_cost_temporarily_denied() {
@@ -215,15 +215,15 @@ mod tests {
         );
 
         let next_allowed_ts = match gcra.check_and_modify(&rate_limit, rate_limit.resource_limit) {
-                Err(GcraError::DeniedUntil { next_allowed_at }) => {
-                    next_allowed_at
-                },
-                _ => panic!("request #2 is only temporarily denied")
-            };
+            Err(GcraError::DeniedUntil { next_allowed_at }) => next_allowed_at,
+            _ => panic!("request #2 is only temporarily denied"),
+        };
 
         assert!(
             next_allowed_ts >= first_req_ts + rate_limit.increment_interval(1),
-            "we should only be allowed after the burst period {:?} >= {:?}", next_allowed_ts, first_req_ts + rate_limit.period
+            "we should only be allowed after the burst period {:?} >= {:?}",
+            next_allowed_ts,
+            first_req_ts + rate_limit.period
         );
         assert_eq!(after_first_tat, gcra.tat, "State should be unchanged.")
     }
