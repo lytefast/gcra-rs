@@ -1,14 +1,14 @@
 [package]
 name = "gcra"
-version = "0.2.0"
+version = "0.3.0"
 edition = "2021"
 authors = ["Sam Shih <lytefast@github.com>"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/lytefast/gcra-rs"
 homepage = "https://github.com/lytefast/gcra-rs"
-description = "A basic implementation of GCRA algorithm"
-keywords = ["rate-limit"]
+description = "A basic implementation of GCRA algorithm for rate limiting"
+keywords = ["rate-limit", "rate", "limit", "gcra"]
 
 [features]
 default = []

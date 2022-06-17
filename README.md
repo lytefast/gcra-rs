@@ -1,3 +1,8 @@
+[![Build Status](https://travis-ci.com/lytefast/gcra.svg?branch=master)](https://travis-ci.com/lytefast/gcra)
+[![License](https://img.shields.io/github/license/lytefast/gcra.svg)](LICENSE)
+[![Documentation](https://docs.rs/gcra/badge.svg)](https://docs.rs/gcra/)
+[![crates.io](https://img.shields.io/crates/v/gcra.svg)](https://crates.io/crates/gcra)
+
 # GCRA: A basic implementation
 
 Library which implements the core
