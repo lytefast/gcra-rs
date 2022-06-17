@@ -1,8 +1,8 @@
-use std::{fmt::Display, hash::Hash};
+use std::{fmt::Display, hash::Hash, time::Instant};
 use thingvellir::{Commit, MutableServiceHandle, ShardError};
 use thiserror::Error;
 
-use super::entry::{InMemoryUpstream, RateLimitEntry};
+use super::{clock::{Clock, InstantClock}, entry::{InMemoryUpstream, RateLimitEntry}};
 use crate::{GcraError, RateLimit};
 
 #[derive(Error, Debug)]
@@ -30,16 +30,18 @@ where
 /// A sharded rate limiter implementation using an internal [GcraState] per entry.
 /// It is `Send + Sync + Clone` and manages an internal LRU with expiration.
 #[derive(Clone)]
-pub struct RateLimiter<T> {
+pub struct RateLimiter<T, C = InstantClock> {
+    clock: C,
     shard_handle: MutableServiceHandle<RateLimitRequest<T>, RateLimitEntry>,
 }
 
-impl<Key> RateLimiter<Key>
+impl<Key> RateLimiter<Key, InstantClock>
 where
     Key: Send + Clone + Hash + Eq + Display + 'static,
 {
     pub fn new(max_data_capacity: usize, num_shards: u8) -> Self {
         Self {
+            clock: InstantClock,
             shard_handle: thingvellir::service_builder(max_data_capacity)
                 .num_shards(num_shards)
                 .build_mutable(
@@ -48,22 +50,44 @@ where
                 ),
         }
     }
+}
 
+impl<Key, C> RateLimiter<Key, C>
+where
+    Key: Send + Clone + Hash + Eq + Display + 'static,
+    C: Clock
+{
     /// Check to see if [key] is rate limited.
     /// # Errors
     /// - [GcraError::DeniedUntil] if the request can succeed after the [Instant] returned.
     /// - [GcraError::DeniedIndefinitely] if the request can never succeed
+    #[inline]
     pub async fn check(
         &mut self,
         key: Key,
         rate_limit: RateLimit,
         cost: u32,
     ) -> Result<(), RateLimiterError> {
+        self.check_at(key, rate_limit, cost, self.clock.now()).await
+    }
+
+    /// Check to see if [key] is rate limited.
+    ///
+    /// # Errors
+    /// - [GcraError::DeniedUntil] if the request can succeed after the [Instant] returned.
+    /// - [GcraError::DeniedIndefinitely] if the request can never succeed
+    pub async fn check_at(
+        &mut self,
+        key: Key,
+        rate_limit: RateLimit,
+        cost: u32,
+        arrived_at: Instant
+    ) -> Result<(), RateLimiterError> {
         let request_key = RateLimitRequest { key };
         let result = self
             .shard_handle
             .execute_mut(request_key, move |entry| {
-                let check_result = entry.check_and_modify(&rate_limit, cost);
+                let check_result = entry.check_and_modify_at(&rate_limit, arrived_at, cost);
 
                 match check_result {
                     Ok(_) => {
@@ -122,5 +146,18 @@ mod tests {
             }
             Err(_) => panic!("Unexpected error"),
         }
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_leaks() {
+        let rate_limit = RateLimit::per_sec(2);
+        let mut rl = RateLimiter::new(4, 4);
+
+        let now = Instant::now();
+        assert!(rl.check_at("key", rate_limit.clone(), 1, now).await.is_ok());
+        assert!(rl.check_at("key", rate_limit.clone(), 1, now + Duration::from_millis(250)).await.is_ok(), "delay the 2nd check");
+        assert!(rl.check_at("key", rate_limit.clone(), 1, now + Duration::from_millis(251)).await.is_err(), "check we are denied start");
+        assert!(rl.check_at("key", rate_limit.clone(), 1, now + Duration::from_millis(499)).await.is_err(), "check we are denied end");
+        assert!(rl.check_at("key", rate_limit.clone(), 1, now + Duration::from_millis(501)).await.is_ok(), "1st use should be released")
     }
 }
