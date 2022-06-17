@@ -5,8 +5,10 @@ use crate::rate_limit::RateLimit;
 
 #[derive(Error, Debug, PartialEq, Eq)]
 pub enum GcraError {
+    /// Cost of the increment exceeds the rate limit and  will never succeed
     #[error("Cost of the increment ({cost}) exceeds the rate limit ({rate_limit:?}) and will never succeed)")]
     DeniedIndefinitely { cost: u32, rate_limit: RateLimit },
+    /// Limited request until after the [Instant]
     #[error("Denied until {next_allowed_at:?}")]
     DeniedUntil { next_allowed_at: Instant },
 }
@@ -22,17 +24,21 @@ pub struct GcraState {
 
 impl GcraState {
     /// Check if we are allowed to proceed. If so updated our internal state and return true.
+    ///
+    /// Simply passes the current Instant to [`check_and_modify_at()`]
+    #[inline]
+    pub fn check_and_modify(&mut self, rate_limit: &RateLimit, cost: u32) -> Result<(), GcraError> {
+        let arrived_at = Instant::now();
+        self.check_and_modify_at(rate_limit, arrived_at, cost)
+    }
+
+    /// Check if we are allowed to proceed at the given arrival time.
+    /// If so updated our internal state and return true.
     /// Explaination of GCRA can be found [here](https://blog.ian.stapletoncordas.co/2018/12/understanding-generic-cell-rate-limiting.html)
     ///
     /// # Returns
     /// If denied, will return an [Result::Err] where the value is the next allowed timestamp.
-    pub fn check_and_modify(&mut self, rate_limit: &RateLimit, cost: u32) -> Result<(), GcraError> {
-        let arrived_at = Instant::now();
-        self.check_and_modify_internal(rate_limit, arrived_at, cost)
-    }
-
-    #[inline]
-    fn check_and_modify_internal(
+    pub fn check_and_modify_at(
         &mut self,
         rate_limit: &RateLimit,
         arrived_at: Instant,
@@ -128,7 +134,7 @@ mod tests {
         let arrived_at = Instant::now();
         assert_eq!(
             Ok(()),
-            gcra.check_and_modify_internal(&rate_limit, arrived_at, 1),
+            gcra.check_and_modify_at(&rate_limit, arrived_at, 1),
             "request #1 should pass"
         );
         assert_eq!(
@@ -153,7 +159,7 @@ mod tests {
         assert!(
             matches!(
                 // manually force time check that we know will fail
-                gcra.check_and_modify_internal(
+                gcra.check_and_modify_at(
                     &rate_limit,
                     current_tat - rate_limit.period - Duration::from_millis(1),
                     1
@@ -165,7 +171,7 @@ mod tests {
 
         assert!(
             matches!(
-                gcra.check_and_modify_internal(&rate_limit, current_tat - rate_limit.period, 1),
+                gcra.check_and_modify_at(&rate_limit, current_tat - rate_limit.period, 1),
                 Err(_allowed_at)
             ),
             "request #5 after leak period should pass. INCREMENT_INTERVAL has passed"

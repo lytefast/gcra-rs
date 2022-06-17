@@ -3,6 +3,10 @@
 Library which implements the core
 [GCRA](https://en.wikipedia.org/wiki/Generic_cell_rate_algorithm) functionality in rust.
 
+## Features
+
+- `rate-limiter` a LRU + expiring rate limiter. Implements `Send + Sync` so can be used asynchronously.
+
 ## Usage
 
 ```rust
@@ -19,5 +23,28 @@ fn check_rate_limit() {
       user_state.check_and_modify(&rate_limit, 1).is_err(),
       "We should be over the limit now"
   );
+}
+```
+
+### With `rate-limiter`
+
+```rust
+use gcra::{GcraError, RateLimit, RateLimiter, RateLimiterError};
+
+#[tokio::main]
+async fn main() -> Result<(), RateLimiterError> {
+    let rate_limit = RateLimit::per_sec(2);
+    let mut rl = RateLimiter::new(4, 4);
+
+    rl.check("key", rate_limit.clone(), 1).await?;
+    rl.check("key", rate_limit.clone(), 1).await?;
+
+    match rl.check("key", rate_limit.clone(), 1).await {
+        Err(RateLimiterError::GcraError(GcraError::DeniedUntil { next_allowed_at })) => {
+            print!("Denied: Request next at {:?}", next_allowed_at);
+            Ok(())
+        }
+        unexpected => panic!("Opps something went wrong! {:?}", unexpected),
+    }
 }
 ```
