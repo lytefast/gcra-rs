@@ -55,4 +55,4 @@ mod rate_limiter;
 pub use crate::gcra::{GcraError, GcraState};
 pub use crate::rate_limit::RateLimit;
 #[cfg(feature = "rate-limiter")]
-pub use crate::rate_limiter::{RateLimiter, RateLimiterError};
+pub use crate::rate_limiter::{RateLimiter, RateLimiterError, RateLimitEntry, RateLimitRequest};

@@ -14,7 +14,7 @@ pub enum RateLimiterError {
 }
 
 #[derive(Clone, Hash, PartialEq, Eq, Debug)]
-struct RateLimitRequest<T> {
+pub struct RateLimitRequest<T> {
     key: T,
 }
 
@@ -39,6 +39,7 @@ impl<Key> RateLimiter<Key, InstantClock>
 where
     Key: Send + Clone + Hash + Eq + Display + 'static,
 {
+    /// Constructs an [InMemoryUpstream] sharded instance of a rate limiter.
     pub fn new(max_data_capacity: usize, num_shards: u8) -> Self {
         Self {
             clock: InstantClock,
@@ -48,6 +49,14 @@ where
                     InMemoryUpstream {},
                     thingvellir::DefaultCommitPolicy::Immediate,
                 ),
+        }
+    }
+
+    /// Constructs a instance using the [MutableServiceHandle] provided.
+    pub fn with_handle(shard_handle: MutableServiceHandle<RateLimitRequest<Key>, RateLimitEntry>) -> Self {
+        Self {
+            clock: InstantClock,
+            shard_handle
         }
     }
 }
@@ -92,7 +101,7 @@ where
                 match check_result {
                     Ok(_) => {
                         entry.update_expiration(&rate_limit);
-                        Commit::immediately(check_result)
+                        Commit::default(check_result)
                     }
                     Err(GcraError::DeniedUntil { .. })
                     | Err(GcraError::DeniedIndefinitely { .. }) => unsafe {

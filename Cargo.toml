@@ -11,7 +11,7 @@ description = "A basic implementation of GCRA algorithm for rate limiting"
 keywords = ["rate-limit", "rate", "limit", "gcra"]
 
 [features]
-default = []
+default = ["rate-limiter"]
 rate-limiter = ["thingvellir", "tokio"]
 
 [dependencies]

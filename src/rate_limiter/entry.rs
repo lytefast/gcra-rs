@@ -9,8 +9,8 @@ use thingvellir::{
 
 use crate::{GcraState, RateLimit};
 
-#[derive(Default, Clone)]
-pub(crate) struct RateLimitEntry {
+#[derive(Default, Debug, Clone)]
+pub struct RateLimitEntry {
     pub gcra_state: GcraState,
     expires_at: Option<tokio::time::Instant>,
 }
@@ -31,7 +31,6 @@ impl DerefMut for RateLimitEntry {
 
 impl ServiceData for RateLimitEntry {
     fn should_persist(&self) -> bool {
-        // we are in memory, always save to
         true
     }
 
