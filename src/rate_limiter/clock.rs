@@ -7,5 +7,6 @@ pub trait Clock {
     }
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct InstantClock;
 impl Clock for InstantClock {}
