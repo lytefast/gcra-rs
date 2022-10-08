@@ -32,6 +32,7 @@ impl RateLimit {
         self.emission_interval * cost
     }
 }
+
 #[cfg(test)]
 mod tests {
     use super::*;

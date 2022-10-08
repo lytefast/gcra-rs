@@ -87,6 +87,23 @@ impl GcraState {
             }
         }
     }
+
+    pub fn remaining_resources(&self, rate_limit: &RateLimit, now: Instant) -> u32 {
+        if rate_limit.period.is_zero() {
+            return 0;
+        }
+
+        let time_to_tat = match self.tat.and_then(|tat| tat.checked_duration_since(now)) {
+            Some(duration_until) => duration_until,
+            None => return rate_limit.resource_limit,
+        };
+
+        // Logically this makes more sense as:
+        //   consumed_resources = time_to_tat * (resource_limit/period)
+        // but we run it this way because of Duration's arithmetic functions
+        let consumed_resources = (time_to_tat * rate_limit.resource_limit).div_duration_f32(rate_limit.period);
+        rate_limit.resource_limit - consumed_resources.ceil() as u32
+    }
 }
 
 #[cfg(test)]
@@ -94,6 +111,29 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn test_rate_limit_unused_counts() {
+        let base_tat = Instant::now();
+        let rate_limit = RateLimit::new(10, Duration::from_secs(1));
+
+        assert_eq!(
+            4,
+            GcraState { tat: Some(base_tat+Duration::from_millis(550))}.remaining_resources(&rate_limit, base_tat),
+            "Remaining count should ceiled"
+        );
+        assert_eq!(
+            0,
+            GcraState { tat: Some(base_tat+Duration::from_millis(950))}.remaining_resources(&rate_limit, base_tat),
+            "Remaining count should ceiled, thus preventing any additional requests"
+        );
+
+        assert_eq!(
+            9,
+            GcraState { tat: Some(base_tat+Duration::from_millis(100))}.remaining_resources(&rate_limit, base_tat),
+            "Remaining count is based on max_period timeout"
+        );
+    }
 
     #[test]
     fn gcra_basics() {
