@@ -78,7 +78,7 @@ impl GcraState {
             let new_tat = compute_tat(tat)?;
 
             let next_allowed_at = new_tat - delay_variation_tolerance;
-            if next_allowed_at < arrived_at {
+            if next_allowed_at <= arrived_at {
                 self.tat = Some(new_tat);
                 Ok(())
             } else {
@@ -101,7 +101,8 @@ impl GcraState {
         // Logically this makes more sense as:
         //   consumed_resources = time_to_tat * (resource_limit/period)
         // but we run it this way because of Duration's arithmetic functions
-        let consumed_resources = (time_to_tat * rate_limit.resource_limit).div_duration_f32(rate_limit.period);
+        let consumed_resources =
+            (time_to_tat * rate_limit.resource_limit).div_duration_f32(rate_limit.period);
         rate_limit.resource_limit - consumed_resources.ceil() as u32
     }
 }
@@ -119,18 +120,27 @@ mod tests {
 
         assert_eq!(
             4,
-            GcraState { tat: Some(base_tat+Duration::from_millis(550))}.remaining_resources(&rate_limit, base_tat),
+            GcraState {
+                tat: Some(base_tat + Duration::from_millis(550))
+            }
+            .remaining_resources(&rate_limit, base_tat),
             "Remaining count should ceiled"
         );
         assert_eq!(
             0,
-            GcraState { tat: Some(base_tat+Duration::from_millis(950))}.remaining_resources(&rate_limit, base_tat),
+            GcraState {
+                tat: Some(base_tat + Duration::from_millis(950))
+            }
+            .remaining_resources(&rate_limit, base_tat),
             "Remaining count should ceiled, thus preventing any additional requests"
         );
 
         assert_eq!(
             9,
-            GcraState { tat: Some(base_tat+Duration::from_millis(100))}.remaining_resources(&rate_limit, base_tat),
+            GcraState {
+                tat: Some(base_tat + Duration::from_millis(100))
+            }
+            .remaining_resources(&rate_limit, base_tat),
             "Remaining count is based on max_period timeout"
         );
     }
@@ -164,12 +174,51 @@ mod tests {
     }
 
     #[test]
+    fn gcra_limit() {
+        const LIMIT: u32 = 5;
+        let mut gcra = GcraState::default();
+        let rate_limit = RateLimit::new(LIMIT, Duration::from_secs(1));
+
+        let req_ts = Instant::now();
+        for i in 0..LIMIT {
+            assert_eq!(
+                Ok(()),
+                gcra.check_and_modify_at(&rate_limit, req_ts, 1),
+                "request #{} should pass",
+                i + 1
+            );
+        }
+
+        assert_eq!(
+            Some(req_ts + rate_limit.period),
+            gcra.tat,
+            "state should be modified and have a TAT for the full period",
+        );
+
+        // Trigger another event
+        let denied_result = gcra.check_and_modify_at(&rate_limit, req_ts, 1);
+        
+        assert_eq!(
+            Some(req_ts + rate_limit.period),
+            gcra.tat,
+            "state should not have changed when at limit",
+        );
+
+        assert_eq!(
+            Err(GcraError::DeniedUntil { next_allowed_at: req_ts + rate_limit.emission_interval }),
+            denied_result,
+            "next request should be denied",
+        );
+    }
+
+    #[test]
     fn gcra_leaky() {
         // const INCREMENT_INTERVAL: u64 = 500;
         const INCREMENT_INTERVAL: Duration = Duration::from_millis(500);
 
         let mut gcra = GcraState::default();
         let rate_limit = RateLimit::new(10, 10 * INCREMENT_INTERVAL);
+        assert_eq!(INCREMENT_INTERVAL, rate_limit.emission_interval);
 
         let arrived_at = Instant::now();
         assert_eq!(
