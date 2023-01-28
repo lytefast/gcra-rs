@@ -88,6 +88,50 @@ impl GcraState {
         }
     }
 
+    
+    /// Reverts rate_limit by cost, and updated our internal state.
+    ///
+    /// Simply passes the current Instant to [`revert_at()`]
+    #[inline]
+    pub fn revert(&mut self, rate_limit: &RateLimit, cost: u32) -> Result<(), GcraError> {
+        let arrived_at = Instant::now();
+        self.revert_at(rate_limit, arrived_at, cost)
+    }
+
+    /// Reverts rate_limit by cost, and updated our internal state.
+    /// 
+    /// This is a hack that substracts the incremental cost from the TAT.
+    pub fn revert_at(
+        &mut self,
+        rate_limit: &RateLimit,
+        arrived_at: Instant,
+        cost: u32,
+    ) -> Result<(), GcraError> {
+        let increment_interval = rate_limit.increment_interval(cost);
+        
+        let compute_revert_tat = |new_tat: Instant| {
+            new_tat - increment_interval
+        };
+
+        let tat = match self.tat {
+            Some(tat) => tat,
+            None => {
+                // First ever request. Nothing to do.
+                return Ok(());
+            }
+        };
+
+        // We had a previous request
+        if tat < arrived_at {
+            // Reset state: prev request was really old
+            self.tat = None;
+        } else {
+            // prev request was recent
+            self.tat = Some(compute_revert_tat(tat));
+        }
+        Ok(())
+    }
+
     pub fn remaining_resources(&self, rate_limit: &RateLimit, now: Instant) -> u32 {
         if rate_limit.period.is_zero() {
             return 0;
@@ -174,7 +218,7 @@ mod tests {
     }
 
     #[test]
-    fn gcra_limit() {
+    fn gcra_limited() {
         const LIMIT: u32 = 5;
         let mut gcra = GcraState::default();
         let rate_limit = RateLimit::new(LIMIT, Duration::from_secs(1));
@@ -208,6 +252,97 @@ mod tests {
             Err(GcraError::DeniedUntil { next_allowed_at: req_ts + rate_limit.emission_interval }),
             denied_result,
             "next request should be denied",
+        );
+    }
+
+    #[test]
+    fn gcra_revert_new() {
+        const LIMIT: u32 = 5;
+        let mut gcra = GcraState::default();
+        let rate_limit = RateLimit::new(LIMIT, Duration::from_secs(1));
+
+        let req_ts = Instant::now();
+        // Revert before any calls
+        assert!(gcra.revert_at(&rate_limit, req_ts, 1).is_ok(), "revert should have released resources");
+        assert_eq!(
+            None,
+            gcra.tat,
+            "state should not have changed at all",
+        );
+    }
+    
+    #[test]
+    fn gcra_revert_existing() {
+        const LIMIT: u32 = 5;
+        let mut gcra = GcraState::default();
+        let rate_limit = RateLimit::new(LIMIT, Duration::from_secs(1));
+
+        let req_ts = Instant::now();
+        assert_eq!(
+            Ok(()),
+            gcra.check_and_modify_at(&rate_limit, req_ts, 5),
+            "use up all resources",
+        );
+
+        assert_eq!(
+            Some(req_ts + rate_limit.period),
+            gcra.tat,
+            "state should be modified and have a TAT for the full period",
+        );
+
+        // Revert
+        assert!(gcra.revert_at(&rate_limit, req_ts, 1).is_ok(), "revert should have released resources");
+        assert_eq!(
+            Some(req_ts + rate_limit.period - rate_limit.increment_interval(1)),
+            gcra.tat,
+            "state should not have changed when at limit",
+        );
+
+        // Confirm revert re-enables
+        assert_eq!(
+            Ok(()),
+            gcra.check_and_modify_at(&rate_limit, req_ts, 1),
+            "additional resources should have been freed",
+        );
+    }
+
+    #[test]
+    fn gcra_revert_existing_ancient() {
+        const LIMIT: u32 = 5;
+        let mut gcra = GcraState::default();
+        let rate_limit = RateLimit::new(LIMIT, Duration::from_secs(1));
+
+        let past_req_ts = Instant::now() - Duration::from_secs(100);
+        assert_eq!(
+            Ok(()),
+            gcra.check_and_modify_at(&rate_limit, past_req_ts, 5),
+            "use up all resources, but in distant past",
+        );
+        assert_eq!(
+            Some(past_req_ts + rate_limit.period),
+            gcra.tat,
+            "state should be modified and have a TAT for the past",
+        );
+
+        // Revert using current time
+        let req_ts = Instant::now();
+        assert!(gcra.revert_at(&rate_limit, req_ts, 1).is_ok(), "revert should have released resources");
+        assert_eq!(
+            None,
+            gcra.tat,
+            "state should have reset since it was so old",
+        );
+
+        // Confirm revert had 0 effect
+        assert_eq!(
+            Ok(()),
+            gcra.check_and_modify_at(&rate_limit, req_ts, 1),
+            "additional resources should have been freed",
+        );
+        assert_eq!(
+            gcra.tat,
+            Some(req_ts + rate_limit.increment_interval(1)),
+            "new TAT state should have been moved forward according to cost like normal"
         );
     }
 
