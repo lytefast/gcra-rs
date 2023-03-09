@@ -34,10 +34,10 @@ fn check_rate_limit() {
 ### With `rate-limiter`
 
 ```rust
-use gcra::{GcraError, RateLimit, RateLimiter, RateLimiterError};
+use gcra::{GcraError, RateLimit, RateLimiter};
 
 #[tokio::main]
-async fn main() -> Result<(), RateLimiterError> {
+async fn main() -> Result<(), GcraError> {
     let rate_limit = RateLimit::per_sec(2);
     let mut rl = RateLimiter::new(4, 4);
 
@@ -45,7 +45,7 @@ async fn main() -> Result<(), RateLimiterError> {
     rl.check("key", rate_limit.clone(), 1).await?;
 
     match rl.check("key", rate_limit.clone(), 1).await {
-        Err(RateLimiterError::GcraError(GcraError::DeniedUntil { next_allowed_at })) => {
+        Err(GcraError::DeniedUntil { next_allowed_at }) => {
             print!("Denied: Request next at {:?}", next_allowed_at);
             Ok(())
         }
