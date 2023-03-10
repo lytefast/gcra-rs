@@ -39,7 +39,7 @@ use gcra::{GcraError, RateLimit, RateLimiter};
 #[tokio::main]
 async fn main() -> Result<(), GcraError> {
     let rate_limit = RateLimit::per_sec(2);
-    let mut rl = RateLimiter::new(4, 4);
+    let mut rl = RateLimiter::new(4);
 
     rl.check("key", rate_limit.clone(), 1).await?;
     rl.check("key", rate_limit.clone(), 1).await?;
