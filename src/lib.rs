@@ -1,4 +1,6 @@
 #![feature(div_duration)]
+#![feature(is_some_and)]
+    
 
 //! Library which implements the core
 //! [GCRA](https://en.wikipedia.org/wiki/Generic_cell_rate_algorithm) functionality in rust.
@@ -29,18 +31,18 @@
 //! ## With `rate-limiter`
 //!
 //! ```rust
-//! use gcra::{GcraError, RateLimit, RateLimiter, RateLimiterError};
+//! use gcra::{GcraError, RateLimit, RateLimiter};
 //!
 //! #[tokio::main]
-//! async fn main() -> Result<(), RateLimiterError> {
+//! async fn main() -> Result<(), GcraError> {
 //!     let rate_limit = RateLimit::per_sec(2);
-//!     let mut rl = RateLimiter::new(4, 4);
+//!     let mut rl = RateLimiter::new(4);
 //!
 //!     rl.check("key", rate_limit.clone(), 1).await?;
 //!     rl.check("key", rate_limit.clone(), 1).await?;
 //!
 //!     match rl.check("key", rate_limit.clone(), 1).await {
-//!         Err(RateLimiterError::GcraError(GcraError::DeniedUntil { next_allowed_at })) => {
+//!         Err(GcraError::DeniedUntil { next_allowed_at }) => {
 //!             print!("Denied: Request next at {:?}", next_allowed_at);
 //!             Ok(())
 //!         }
@@ -57,4 +59,4 @@ mod rate_limiter;
 pub use crate::gcra::{GcraError, GcraState};
 pub use crate::rate_limit::RateLimit;
 #[cfg(feature = "rate-limiter")]
-pub use crate::rate_limiter::{RateLimiter, RateLimiterError, RateLimitEntry, RateLimitRequest};
+pub use crate::rate_limiter::{RateLimiter, RateLimitEntry, RateLimitRequest};
