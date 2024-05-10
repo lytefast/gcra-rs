@@ -50,12 +50,15 @@
 //! }
 //! ```
 
+pub mod clock;
 mod gcra;
 mod rate_limit;
+mod rate_limit_guard;
 #[cfg(feature = "rate-limiter")]
 mod rate_limiter;
 
 pub use crate::gcra::{GcraError, GcraState};
 pub use crate::rate_limit::RateLimit;
+pub use crate::rate_limit_guard::RateLimitGuard;
 #[cfg(feature = "rate-limiter")]
 pub use crate::rate_limiter::{RateLimitEntry, RateLimitRequest, RateLimiter};

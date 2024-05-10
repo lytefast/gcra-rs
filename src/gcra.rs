@@ -129,6 +129,7 @@ impl GcraState {
         Ok(())
     }
 
+    /// Get the remaing resources that we have available for the guard at the instant provided.
     pub fn remaining_resources(&self, rate_limit: &RateLimit, now: Instant) -> u32 {
         if rate_limit.period.is_zero() {
             return 0;

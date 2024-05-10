@@ -6,11 +6,11 @@ use std::{
     time::Instant,
 };
 
-use super::{
+use crate::{
     clock::{Clock, InstantClock},
-    entry::RateLimitEntry,
+    rate_limiter::entry::RateLimitEntry,
+    GcraError, RateLimit,
 };
-use crate::{GcraError, RateLimit};
 
 pub type FxBuildHasher = BuildHasherDefault<FxHasher>;
 
@@ -134,7 +134,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use crate::rate_limiter::clock::tests::FakeClock;
+    use crate::clock::tests::FakeClock;
     use core::panic;
     use std::time::{Duration, Instant};
 
