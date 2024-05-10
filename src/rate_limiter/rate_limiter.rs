@@ -67,7 +67,7 @@ where
     C: Clock,
     S: Default + BuildHasher + Clone,
 {
-    pub fn with_clock(clock: C, ) -> Self {
+    pub fn with_clock(clock: C) -> Self {
         Self {
             clock,
             map: DashMap::default(),
@@ -134,11 +134,9 @@ where
 
 #[cfg(test)]
 mod tests {
-    use core::panic;
-    use std::{
-        time::{Duration, Instant},
-    };
     use crate::rate_limiter::clock::tests::FakeClock;
+    use core::panic;
+    use std::time::{Duration, Instant};
 
     use super::*;
 
@@ -239,7 +237,7 @@ mod tests {
         let clock = FakeClock::new();
 
         let rate_limit = RateLimit::per_sec(3);
-        let mut rl: RateLimiter<_,_, FxBuildHasher> = RateLimiter::with_clock(clock.clone());
+        let mut rl: RateLimiter<_, _, FxBuildHasher> = RateLimiter::with_clock(clock.clone());
 
         for index in 0..rate_limit.resource_limit {
             assert!(
@@ -251,11 +249,17 @@ mod tests {
         let before_len = rl.map.len();
         rl.prune_expired();
         let after_len = rl.map.len();
-        assert_eq!(before_len, after_len, "Nothing has expired, no elements should be removed");
+        assert_eq!(
+            before_len, after_len,
+            "Nothing has expired, no elements should be removed"
+        );
 
         clock.advance_by(Duration::from_secs(10));
         rl.prune_expired();
         let after_len = rl.map.len();
-        assert_eq!(0, after_len, "All entries have expired, no elements expected");
+        assert_eq!(
+            0, after_len,
+            "All entries have expired, no elements expected"
+        );
     }
 }

@@ -31,4 +31,3 @@ impl RateLimitEntry {
         self.expires_at = Some(expires_at);
     }
 }
-

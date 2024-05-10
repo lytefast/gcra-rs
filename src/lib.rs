@@ -1,6 +1,5 @@
 #![feature(div_duration)]
 #![feature(is_some_and)]
-    
 
 //! Library which implements the core
 //! [GCRA](https://en.wikipedia.org/wiki/Generic_cell_rate_algorithm) functionality in rust.
@@ -59,4 +58,4 @@ mod rate_limiter;
 pub use crate::gcra::{GcraError, GcraState};
 pub use crate::rate_limit::RateLimit;
 #[cfg(feature = "rate-limiter")]
-pub use crate::rate_limiter::{RateLimiter, RateLimitEntry, RateLimitRequest};
+pub use crate::rate_limiter::{RateLimitEntry, RateLimitRequest, RateLimiter};

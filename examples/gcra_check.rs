@@ -1,20 +1,21 @@
 use std::time::Instant;
 
 use chrono::{DateTime, Duration, Utc};
-use gcra::{GcraState, GcraError, RateLimit};
+use gcra::{GcraError, GcraState, RateLimit};
 
 fn check_rate_limit(rate_limit: &RateLimit, gcra_state: &mut GcraState) -> bool {
     const COST: u32 = 1;
     match gcra_state.check_and_modify(rate_limit, COST) {
         Ok(_) => {
-            println!("allowed");
+            let remaining_resources = gcra_state.remaining_resources(rate_limit, Instant::now());
+            println!("allowed. Remaining usages: {}", remaining_resources);
             true
         }
-        Err(GcraError::DeniedUntil {next_allowed_at }) => {
+        Err(GcraError::DeniedUntil { next_allowed_at }) => {
             println!("denied. Try again at {:?}", to_date_time(next_allowed_at));
             false
         }
-        
+
         Err(error) => {
             println!("denied: {:?}", error);
             false
