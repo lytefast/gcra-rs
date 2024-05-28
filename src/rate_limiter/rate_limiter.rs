@@ -80,7 +80,7 @@ where
     /// - [GcraError::DeniedIndefinitely] if the request can never succeed
     #[inline]
     pub async fn check(
-        &mut self,
+        &self,
         key: Key,
         rate_limit: RateLimit,
         cost: u32,
@@ -94,7 +94,7 @@ where
     /// - [GcraError::DeniedUntil] if the request can succeed after the [Instant] returned.
     /// - [GcraError::DeniedIndefinitely] if the request can never succeed
     pub async fn check_at(
-        &mut self,
+        &self,
         key: Key,
         rate_limit: RateLimit,
         cost: u32,
@@ -122,7 +122,7 @@ where
     }
 
     /// Removes entries that have expired
-    pub fn prune_expired(&mut self) {
+    pub fn prune_expired(&self) {
         let now = self.clock.now();
 
         self.map.retain(|_key, entry| match entry.expires_at {
@@ -143,7 +143,7 @@ mod tests {
     #[tokio::test]
     async fn rate_limiter_run_until_denied() {
         let rate_limit = RateLimit::new(3, Duration::from_secs(3));
-        let mut rl = RateLimiter::with_shards(4, 2);
+        let rl = RateLimiter::with_shards(4, 2);
 
         for _ in 0..rate_limit.resource_limit {
             assert!(
@@ -164,7 +164,7 @@ mod tests {
     #[tokio::test]
     async fn rate_limiter_indefinitly_denied() {
         let rate_limit = RateLimit::new(3, Duration::from_secs(3));
-        let mut rl = RateLimiter::with_shards(4, 2);
+        let rl = RateLimiter::with_shards(4, 2);
 
         match rl.check("key", rate_limit.clone(), 9).await {
             Ok(_) => panic!("We should be rate limited"),
@@ -182,7 +182,7 @@ mod tests {
     #[tokio::test]
     async fn rate_limiter_leaks() {
         let rate_limit = RateLimit::per_sec(2);
-        let mut rl = RateLimiter::with_shards(4, 2);
+        let rl = RateLimiter::with_shards(4, 2);
 
         let now = Instant::now();
         assert!(rl.check_at("key", rate_limit.clone(), 1, now).await.is_ok());
@@ -237,7 +237,7 @@ mod tests {
         let clock = FakeClock::new();
 
         let rate_limit = RateLimit::per_sec(3);
-        let mut rl: RateLimiter<_, _, FxBuildHasher> = RateLimiter::with_clock(clock.clone());
+        let rl: RateLimiter<_, _, FxBuildHasher> = RateLimiter::with_clock(clock.clone());
 
         for index in 0..rate_limit.resource_limit {
             assert!(
