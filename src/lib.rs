@@ -1,5 +1,4 @@
 #![feature(div_duration)]
-#![feature(is_some_and)]
 
 //! Library which implements the core
 //! [GCRA](https://en.wikipedia.org/wiki/Generic_cell_rate_algorithm) functionality in rust.
