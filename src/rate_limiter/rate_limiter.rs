@@ -82,7 +82,7 @@ where
     pub async fn check(
         &self,
         key: Key,
-        rate_limit: RateLimit,
+        rate_limit: &RateLimit,
         cost: u32,
     ) -> Result<Instant, GcraError> {
         self.check_at(key, rate_limit, cost, self.clock.now()).await
@@ -96,16 +96,16 @@ where
     pub async fn check_at(
         &self,
         key: Key,
-        rate_limit: RateLimit,
+        rate_limit: &RateLimit,
         cost: u32,
         arrived_at: Instant,
     ) -> Result<Instant, GcraError> {
         let request_key = RateLimitRequest { key };
 
         let mut entry = self.map.entry(request_key.clone()).or_default();
-        match entry.check_and_modify_at(&rate_limit, arrived_at, cost) {
+        match entry.check_and_modify_at(rate_limit, arrived_at, cost) {
             Ok(_) => {
-                entry.update_expiration(&rate_limit);
+                entry.update_expiration(rate_limit);
                 // Guaranteed to be set from update_expiration
                 let expires_at = entry.expires_at.unwrap();
                 Ok(expires_at)
@@ -147,12 +147,12 @@ mod tests {
 
         for _ in 0..rate_limit.resource_limit {
             assert!(
-                rl.check("key", rate_limit.clone(), 1).await.is_ok(),
+                rl.check("key", &rate_limit, 1).await.is_ok(),
                 "Shouldn't be rate limited yet"
             );
         }
 
-        match rl.check("key", rate_limit, 1).await {
+        match rl.check("key", &rate_limit, 1).await {
             Ok(_) => panic!("We should be rate limited"),
             Err(GcraError::DeniedUntil { next_allowed_at }) => {
                 assert!(next_allowed_at > Instant::now())
@@ -166,7 +166,7 @@ mod tests {
         let rate_limit = RateLimit::new(3, Duration::from_secs(3));
         let rl = RateLimiter::with_shards(4, 2);
 
-        match rl.check("key", rate_limit.clone(), 9).await {
+        match rl.check("key", &rate_limit, 9).await {
             Ok(_) => panic!("We should be rate limited"),
             Err(GcraError::DeniedIndefinitely {
                 cost,
@@ -185,49 +185,29 @@ mod tests {
         let rl = RateLimiter::with_shards(4, 2);
 
         let now = Instant::now();
-        assert!(rl.check_at("key", rate_limit.clone(), 1, now).await.is_ok());
+        assert!(rl.check_at("key", &rate_limit, 1, now).await.is_ok());
         assert!(
-            rl.check_at(
-                "key",
-                rate_limit.clone(),
-                1,
-                now + Duration::from_millis(250)
-            )
-            .await
-            .is_ok(),
+            rl.check_at("key", &rate_limit, 1, now + Duration::from_millis(250))
+                .await
+                .is_ok(),
             "delay the 2nd check"
         );
         assert!(
-            rl.check_at(
-                "key",
-                rate_limit.clone(),
-                1,
-                now + Duration::from_millis(251)
-            )
-            .await
-            .is_err(),
+            rl.check_at("key", &rate_limit, 1, now + Duration::from_millis(251))
+                .await
+                .is_err(),
             "check we are denied start"
         );
         assert!(
-            rl.check_at(
-                "key",
-                rate_limit.clone(),
-                1,
-                now + Duration::from_millis(499)
-            )
-            .await
-            .is_err(),
+            rl.check_at("key", &rate_limit, 1, now + Duration::from_millis(499))
+                .await
+                .is_err(),
             "check we are denied end"
         );
         assert!(
-            rl.check_at(
-                "key",
-                rate_limit.clone(),
-                1,
-                now + Duration::from_millis(501)
-            )
-            .await
-            .is_ok(),
+            rl.check_at("key", &rate_limit, 1, now + Duration::from_millis(501))
+                .await
+                .is_ok(),
             "1st use should be released"
         )
     }
@@ -241,7 +221,7 @@ mod tests {
 
         for index in 0..rate_limit.resource_limit {
             assert!(
-                rl.check(index, rate_limit.clone(), 1).await.is_ok(),
+                rl.check(index, &rate_limit, 1).await.is_ok(),
                 "Shouldn't be rate limited yet"
             );
         }
