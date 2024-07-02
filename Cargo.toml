@@ -2,13 +2,14 @@
 name = "gcra"
 version = "0.6.0"
 edition = "2021"
+rust-version = "1.80.0"
 authors = ["Sam Shih <lytefast@github.com>"]
 license = "MIT"
 readme = "README.md"
 repository = "https://github.com/lytefast/gcra-rs"
 homepage = "https://github.com/lytefast/gcra-rs"
 description = "A basic implementation of GCRA algorithm for rate limiting"
-keywords = ["rate-limit", "rate", "limit", "gcra"]
+keywords = ["rate-limit", "rate", "limit", "gcra", "rate limit", "limiter"]
 
 [features]
 default = ["rate-limiter"]
