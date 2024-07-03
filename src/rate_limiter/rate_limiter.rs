@@ -134,9 +134,14 @@ where
 
 #[cfg(test)]
 mod tests {
+    use futures::stream::{self, StreamExt};
+
     use crate::clock::tests::FakeClock;
     use core::panic;
-    use std::time::{Duration, Instant};
+    use std::{
+        sync::Arc,
+        time::{Duration, Instant},
+    };
 
     use super::*;
 
@@ -153,6 +158,33 @@ mod tests {
         }
 
         match rl.check("key", &rate_limit, 1).await {
+            Ok(_) => panic!("We should be rate limited"),
+            Err(GcraError::DeniedUntil { next_allowed_at }) => {
+                assert!(next_allowed_at > Instant::now())
+            }
+            Err(_) => panic!("Unexpected error"),
+        }
+    }
+
+    #[tokio::test]
+    async fn rate_limiter_run_until_denied_concurrent_access() {
+        let rate_limit = RateLimit::new(3, Duration::from_secs(3));
+        let rate_limiter = Arc::new(RateLimiter::with_shards(4, 2));
+
+        let all_checked = stream::iter(0..rate_limit.resource_limit)
+            .then(|_| async {
+                let rate_limiter = rate_limiter.clone();
+                rate_limiter.check("key", &rate_limit, 1).await
+            })
+            .all(|result| async move { result.is_ok() })
+            .await;
+
+        assert!(
+            all_checked,
+            "All checks should have passed and not rate limited"
+        );
+
+        match rate_limiter.check("key", &rate_limit, 1).await {
             Ok(_) => panic!("We should be rate limited"),
             Err(GcraError::DeniedUntil { next_allowed_at }) => {
                 assert!(next_allowed_at > Instant::now())
