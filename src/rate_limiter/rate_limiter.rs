@@ -63,7 +63,7 @@ where
 
 impl<Key, C, S> RateLimiter<Key, C, S>
 where
-    Key: Send + Clone + Hash + Eq + Display + 'static,
+    Key: Send + Clone + Hash + Eq + 'static,
     C: Clock,
     S: Default + BuildHasher + Clone,
 {
