@@ -9,7 +9,7 @@ readme = "README.md"
 repository = "https://github.com/lytefast/gcra-rs"
 homepage = "https://github.com/lytefast/gcra-rs"
 description = "A basic implementation of GCRA algorithm for rate limiting"
-keywords = ["rate-limit", "rate", "limit", "gcra", "rate limit", "limiter"]
+keywords = ["rate-limit", "rate", "limit", "gcra", "limiter"]
 
 [features]
 default = ["rate-limiter"]
